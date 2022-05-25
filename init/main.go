@@ -45,6 +45,8 @@ var (
 	rootFsType     string
 	rootFlags      string
 	rootRo, rootRw bool
+
+	zfsDataset string
 )
 
 type set map[string]bool
@@ -180,11 +182,9 @@ func addBlockDevice(devpath string, isDevice bool, symlinks []string) error {
 		return handleGptBlockDevice(blk)
 	}
 
-	if cmdResume != nil {
-		if blk.matchesRef(cmdResume) {
-			if err := resume(devpath); err != nil {
-				return err
-			}
+	if blk.matchesRef(cmdResume) {
+		if err := resume(devpath); err != nil {
+			return err
 		}
 	}
 
@@ -220,9 +220,7 @@ func handleGptBlockDevice(blk *blkInfo) error {
 		blk.resolveGptRef(cmdRoot)
 	}
 
-	if cmdResume != nil {
-		blk.resolveGptRef(cmdResume)
-	}
+	blk.resolveGptRef(cmdResume)
 
 	for _, m := range luksMappings {
 		blk.resolveGptRef(m.ref)
@@ -349,13 +347,7 @@ func mountRootFs(dev, fstype string) error {
 		return err
 	}
 
-	rootMountFlags, options := sunderMountFlags(rootFlags, rootAutodiscoveryMountFlags)
-	if rootRo {
-		rootMountFlags |= unix.MS_RDONLY
-	}
-	if rootRw {
-		rootMountFlags &^= unix.MS_RDONLY
-	}
+	rootMountFlags, options := mountFlags()
 	info("mounting %s->%s, fs=%s, flags=0x%x, options=%s", dev, newRoot, fstype, rootMountFlags, options)
 	if err := mount(dev, newRoot, fstype, rootMountFlags, options); err != nil {
 		return err
@@ -363,6 +355,17 @@ func mountRootFs(dev, fstype string) error {
 
 	rootMounted.Done()
 	return nil
+}
+
+func mountFlags() (uintptr, string) {
+	rootMountFlags, options := sunderMountFlags(rootFlags, rootAutodiscoveryMountFlags)
+	if rootRo {
+		rootMountFlags |= unix.MS_RDONLY
+	}
+	if rootRw {
+		rootMountFlags &^= unix.MS_RDONLY
+	}
+	return rootMountFlags, options
 }
 
 // sunderMountFlags separates list of mount parameters (usually provided by a user) into `flags` and `options`
@@ -769,6 +772,12 @@ func boost() error {
 	go func() { check(scanSysModaliases()) }()
 	go func() { check(scanSysBlock()) }()
 
+	if config.EnableZfs {
+		if err := mountZfsRoot(); err != nil {
+			return err
+		}
+	}
+
 	if config.MountTimeout != 0 {
 		// TODO: cancellable, timeout context?
 		timeout := waitTimeout(&rootMounted, time.Duration(config.MountTimeout)*time.Second)
@@ -783,6 +792,61 @@ func boost() error {
 	cleanup()
 	loadingModulesWg.Wait() // wait till all modules done loading to kernel
 	return switchRoot()
+}
+
+func mountZfsRoot() error {
+	// note that 'zfs' module already in modulesForceLoad list and it already started loding
+	// this loadModule() is for zfs module syncronization - we need to wait till the full module loading
+	// before we try to import a pool
+	zfsWg, err := loadModules("zfs")
+	if err != nil {
+		return err
+	}
+	zfsWg.Wait()
+
+	// TODO: handle zfsDataset == bootfs
+	parts := strings.Split(zfsDataset, "/")
+	pool := parts[0]
+
+	debug("importing zfs pool %s", pool)
+
+	err = exec.Command("zpool", "import", "-c", "/etc/zfs/zpool.cache", "-N", pool).Run()
+	if err != nil {
+		return unwrapExitError(err)
+	}
+
+	// find all child datasets and mount them
+	// zfs list -H -o name -t filesystem -r $zfsDataset
+	var datasets []byte
+	datasets, err = exec.Command("zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-r", zfsDataset).Output()
+	if err != nil {
+		return unwrapExitError(err)
+	}
+
+	flags, options := mountFlags()
+	options = strings.Join([]string{"zfsutil", options}, ",")
+	for _, ds := range strings.Split(strings.TrimSpace(string(datasets)), "\n") {
+		val, err := exec.Command("zfs", "get", "-H", "-o", "value", "mountpoint", ds).Output()
+		if err != nil {
+			return unwrapExitError(err)
+		}
+
+		mt := strings.TrimSpace(string(val))
+		switch mt {
+		case "none":
+			continue
+		case "legacy": // todo handle it
+		default:
+			err := mount(ds, filepath.Join(newRoot, mt), "zfs", flags, options)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	rootMounted.Done()
+
+	return nil
 }
 
 var config InitConfig

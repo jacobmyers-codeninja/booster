@@ -16,7 +16,7 @@ func parseCmdline() error {
 		return err
 	}
 
-	if cmdRoot == nil {
+	if cmdRoot == nil && !config.EnableZfs { // zfs specifies root dataset with 'zfs=' param.
 		// try to auto-discover gpt partition https://www.freedesktop.org/wiki/Specifications/DiscoverablePartitionsSpec/
 		rootUUIDType, ok := rootAutodiscoveryGptTypes[runtime.GOARCH]
 		if !ok {
@@ -144,6 +144,8 @@ func parseParams(params string) error {
 				name: "luks-" + stripped,
 			}
 			luksMappings = append(luksMappings, dev)
+		case "zfs":
+			zfsDataset = value
 		default:
 			if dot := strings.IndexByte(key, '.'); value != "" && dot != -1 {
 				// this param looks like a module options
