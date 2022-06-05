@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -117,8 +118,15 @@ linkReadinessLoop:
 	for {
 		select {
 		case ev := <-ch:
+			debug("%s: event %+v", ifname, ev)
 			if ifname == ev.Link.Attrs().Name && (ev.IfInfomsg.Flags&unix.IFF_UP != 0) {
 				debug("%s: interface is UP", ifname)
+				ip, err := exec.Command("ip", "a").Output()
+				err = unwrapExitError(err)
+				if err != nil {
+					return err
+				}
+				debug("%s", string(ip))
 				break linkReadinessLoop
 			}
 		case <-timeout:

@@ -207,6 +207,10 @@ func generateInitRamfs(conf *generatorConfig) error {
 		return err
 	}
 
+	if err := img.appendExtraFiles([]string{"ip"}); err != nil {
+		return err
+	}
+
 	return img.Close()
 }
 
