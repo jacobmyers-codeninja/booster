@@ -170,7 +170,7 @@ func generateInitRamfs(conf *generatorConfig) error {
 		if err != nil {
 			return err
 		}
-		if err := img.AppendContent("/etc/mdadm.conf", 0644, content); err != nil {
+		if err := img.AppendContent("/etc/mdadm.conf", 0o644, content); err != nil {
 			return err
 		}
 	}
@@ -193,7 +193,7 @@ func generateInitRamfs(conf *generatorConfig) error {
 		if err != nil {
 			return err
 		}
-		if err := img.AppendContent("/etc/zfs/zpool.cache", 0644, content); err != nil {
+		if err := img.AppendContent("/etc/zfs/zpool.cache", 0o644, content); err != nil {
 			return err
 		}
 
@@ -233,7 +233,7 @@ func generateInitRamfs(conf *generatorConfig) error {
 	}
 
 	// appending initrd-release file per recommendation from https://systemd.io/INITRD_INTERFACE/
-	if err := img.AppendContent("/etc/initrd-release", 0644, []byte{}); err != nil {
+	if err := img.AppendContent("/etc/initrd-release", 0o644, []byte{}); err != nil {
 		return err
 	}
 
@@ -262,7 +262,7 @@ func appendCompatibilitySymlinks(img *Image) error {
 			return err
 		}
 
-		mode := cpio.FileMode(0777) | cpio.TypeSymlink
+		mode := cpio.FileMode(0o777) | cpio.TypeSymlink
 		if err := img.AppendEntry(l.src, mode, []byte(l.target)); err != nil {
 			return err
 		}
@@ -275,7 +275,7 @@ func (img *Image) appendInitBinary(initBinary string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %v", initBinary, err)
 	}
-	return img.AppendContent("/init", 0755, content)
+	return img.AppendContent("/init", 0o755, content)
 }
 
 func (img *Image) appendExtraFiles(binaries ...string) error {
@@ -370,7 +370,7 @@ func (img *Image) appendInitConfig(conf *generatorConfig, kmod *Kmod, vconsole *
 		return err
 	}
 
-	return img.AppendContent(initConfigPath, 0644, content)
+	return img.AppendContent(initConfigPath, 0o644, content)
 }
 
 func (img *Image) appendAliasesFile(aliases []alias) error {
@@ -381,5 +381,5 @@ func (img *Image) appendAliasesFile(aliases []alias) error {
 		buff.WriteString(a.module)
 		buff.WriteString("\n")
 	}
-	return img.AppendContent(imageModulesDir+"booster.alias", 0644, buff.Bytes())
+	return img.AppendContent(imageModulesDir+"booster.alias", 0o644, buff.Bytes())
 }

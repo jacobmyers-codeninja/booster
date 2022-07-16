@@ -307,7 +307,7 @@ func resume(devpath string) error {
 
 	info("resuming device %s, devno=(%d,%d)", devpath, major, minor)
 	rd := fmt.Sprintf("%d:%d", major, minor)
-	return os.WriteFile("/sys/power/resume", []byte(rd), 0644)
+	return os.WriteFile("/sys/power/resume", []byte(rd), 0o644)
 }
 
 func fsck(dev string) error {
@@ -695,7 +695,7 @@ func boost() error {
 	if err := mount("dev", "/dev", "devtmpfs", unix.MS_NOSUID, "mode=0755"); err != nil {
 		return err
 	}
-	devKmsg, err = os.OpenFile("/dev/kmsg", unix.O_WRONLY, 0600)
+	devKmsg, err = os.OpenFile("/dev/kmsg", unix.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -742,7 +742,7 @@ func boost() error {
 	}
 
 	// Per systemd convention https://systemd.io/INITRD_INTERFACE/
-	if err := os.Mkdir("/run/initramfs", 0755); err != nil {
+	if err := os.Mkdir("/run/initramfs", 0o755); err != nil {
 		return err
 	}
 
@@ -764,7 +764,7 @@ func boost() error {
 
 	diskBy := []string{"id", "partuuid", "path", "uuid"}
 	for _, by := range diskBy {
-		if err := os.MkdirAll("/dev/disk/by-"+by, 0755); err != nil {
+		if err := os.MkdirAll("/dev/disk/by-"+by, 0o755); err != nil {
 			return err
 		}
 	}
@@ -861,7 +861,7 @@ func readConfig() error {
 }
 
 func mount(source, target, fstype string, flags uintptr, options string) error {
-	if err := os.MkdirAll(target, 0755); err != nil {
+	if err := os.MkdirAll(target, 0o755); err != nil {
 		return err
 	}
 	if err := unix.Mount(source, target, fstype, flags, options); err != nil {
