@@ -140,7 +140,7 @@ func parseParams(params string) error {
 		case "rc.luks.key":
 			parts := strings.Split(value, "=")
 			if len(parts) != 2 {
-				return fmt.Errorf("invalid rd.luks.key kernel parameter %s, expected format rd.luks.name=<UUID>=<keyfile>", value)
+				return fmt.Errorf("invalid rd.luks.key kernel parameter %s, expected format rd.luks.key=<UUID>=<keyfile>", value)
 			}
 
 			uuid, err := parseUUID(stripQuotes(parts[0]))
