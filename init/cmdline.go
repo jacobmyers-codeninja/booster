@@ -127,23 +127,29 @@ func parseParams(params string) error {
 				return fmt.Errorf("invalid UUID %s %v", parts[0], err)
 			}
 
-			dev := luksMapping{
-				ref:  &deviceRef{refFsUUID, uuid},
-				name: parts[1],
-			}
-			luksMappings = append(luksMappings, dev)
+			var o = findOrCreateLuksMapping(uuid)
+			o.name = parts[1]
 		case "rd.luks.uuid":
 			stripped := stripQuotes(value)
-			u, err := parseUUID(stripped)
+			uuid, err := parseUUID(stripped)
 			if err != nil {
 				return fmt.Errorf("invalid UUID %s in rd.luks.uuid boot param: %v", value, err)
 			}
 
-			dev := luksMapping{
-				ref:  &deviceRef{refFsUUID, u},
-				name: "luks-" + stripped,
+			findOrCreateLuksMapping(uuid)
+		case "rc.luks.key":
+			parts := strings.Split(value, "=")
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid rd.luks.key kernel parameter %s, expected format rd.luks.name=<UUID>=<keyfile>", value)
 			}
-			luksMappings = append(luksMappings, dev)
+
+			uuid, err := parseUUID(stripQuotes(parts[0]))
+			if err != nil {
+				return fmt.Errorf("invalid UUID %s in rd.luks.key boot param: %v", value, err)
+			}
+
+			var o = findOrCreateLuksMapping(uuid)
+			o.keyfile = parts[1]
 		default:
 			if dot := strings.IndexByte(key, '.'); value != "" && dot != -1 {
 				// this param looks like a module options

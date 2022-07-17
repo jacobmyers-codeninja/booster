@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -24,6 +25,7 @@ import (
 type luksMapping struct {
 	ref     *deviceRef
 	name    string
+	keyfile string
 	options []string
 }
 
@@ -299,6 +301,27 @@ func recoverTokenPassword(volumes chan *luks.Volume, d luks.Device, t luks.Token
 	info("password from %s token #%d does not match", t.Type, t.ID)
 }
 
+func recoverKeyfilePassword(volumes chan *luks.Volume, d luks.Device, checkSlots []int, mappingName string, keyfile string) {
+	password, err := ioutil.ReadFile(keyfile)
+	if err != nil {
+		warning("reading password: %v", err)
+	} else if len(password) > 0 {
+		for _, s := range checkSlots {
+			v, err := d.UnsealVolume(s, password)
+			if err == luks.ErrPassphraseDoesNotMatch {
+				continue
+			}
+			volumes <- v
+			return
+		}
+	}
+
+	warning("password in keyfile #{keyfile} was unable to unseal #{mappingName}\n")
+
+	// have to use keyboard password
+	requestKeyboardPassword(volumes, d, checkSlots, mappingName)
+}
+
 func requestKeyboardPassword(volumes chan *luks.Volume, d luks.Device, checkSlots []int, mappingName string) {
 	for {
 		prompt := fmt.Sprintf("Enter passphrase for %s:", mappingName)
@@ -370,7 +393,13 @@ func luksOpen(dev string, mapping *luksMapping) error {
 		}
 	}
 	if len(checkSlotsWithPassword) > 0 {
-		go requestKeyboardPassword(volumes, d, checkSlotsWithPassword, mapping.name)
+		// is there a keyfile defined for the password for this volume?
+		if len(mapping.keyfile) > 0 {
+			// if the keyfile doesn't work we will fallback to password
+			go recoverKeyfilePassword(volumes, d, checkSlotsWithPassword, mapping.name, mapping.keyfile)
+		} else {
+			go requestKeyboardPassword(volumes, d, checkSlotsWithPassword, mapping.name)
+		}
 	}
 
 	v := <-volumes
@@ -410,4 +439,24 @@ func handleLuksBlockDevice(blk *blkInfo) error {
 	info("a mapping for LUKS device %s has been found", blk.path)
 
 	return luksOpen(blk.path, m)
+}
+
+func findOrCreateLuksMapping(uuid UUID) luksMapping {
+	blk := blkInfo{
+		uuid: uuid,
+	}
+
+	for _, o := range luksMappings {
+		if blk.matchesRef(o.ref) {
+			return o
+		}
+	}
+
+	// didn't locate the device make a new one
+	luksMappings = append(luksMappings, luksMapping{
+		ref:  &deviceRef{refFsUUID, uuid},
+		name: "luks-" + uuid.toString(),
+	})
+
+	return luksMappings[len(luksMappings)-1]
 }
